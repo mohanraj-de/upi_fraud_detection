@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
 NUM_USERS = 500
 NUM_MERCHANTS = 80
 
@@ -34,9 +36,6 @@ MERCHANT_CATEGORIES = [
     "utilities", "ecommerce", "healthcare", "education", "electronics",
     "fashion", "pharmacy",
 ]
-
-STATUS_CHOICES = ["SUCCESS", "FAILED", "REVERSED"]
-STATUS_WEIGHTS = [0.95, 0.04, 0.01]
 
 
 @dataclass
@@ -82,10 +81,31 @@ def build_merchants(n: int) -> list:
     return merchants
 
 
+STATUS_CHOICES = ["SUCCESS", "FAILED", "REVERSED"]
+STATUS_WEIGHTS = [0.95, 0.04, 0.01]
+
+def random_status() -> str:
+    # generate k=1 random status based on weighted choices
+    return random.choices(STATUS_CHOICES, weights=STATUS_WEIGHTS, k=1)[0]
+
+def stranger_upi() -> str:
+    bank = random.choice(BANK_HANDLES)
+    i=random.randint(1,1000)
+    return f"stranger{i:04d}@{bank}"
+
+def new_device_id() -> str:
+    import string
+    ni="".join(random.choices(string.ascii_lowercase,k=4))
+    i=random.randint(1,1000)
+    j=random.randint(1,10)
+    return f"{ni}{i:04d}_{j}"
+
+
+
 def make_event(sender, receiver_upi, receiver_type, receiver_category,
                amount, device_id, status, is_fraud=False, fraud_pattern=None,
                timestamp=None) -> dict:
-    ts = timestamp or datetime.now(timezone.utc)
+    ts = timestamp or datetime.now(IST)
     return {
         "txn_id": str(uuid.uuid4()),
         "timestamp": ts.isoformat(timespec="seconds").replace("+00:00", "Z"),
@@ -127,9 +147,9 @@ def fraud_rapid_fire_burst(users, merchants) -> list:
     """Many small transfers to brand-new payees in quick succession."""
     sender = random.choice(users)
     device = random.choice(sender.devices)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     events = []
-    for i in range(random.randint(6, 12)):
+    for i in range(random.randint(6, 12)): # burst transactions 6-12 to unknown of ntb upi
         ts = now + timedelta(seconds=i * random.uniform(1, 4))
         events.append(make_event(
             sender, stranger_upi(), "P2P", None,
@@ -143,10 +163,10 @@ def fraud_odd_hour_high_value(users, merchants) -> list:
     """A single high-value transaction at an unusual hour (1-4 AM)."""
     sender = random.choice(users)
     receiver_upi, receiver_type, category = pick_receiver(sender, users, merchants)
-    odd_hour_ts = datetime.now(timezone.utc).replace(
+    odd_hour_ts = datetime.now(IST).replace(
         hour=random.randint(1, 4), minute=random.randint(0, 59), second=random.randint(0, 59),
     )
-    amount = sender.typical_spend * random.uniform(8, 15)
+    amount = sender.typical_spend * random.uniform(8, 15) # 8x to 15x typical spends in odd hours
     return [make_event(
         sender, receiver_upi, receiver_type, category,
         amount, random.choice(sender.devices), random_status(),
@@ -170,7 +190,7 @@ def fraud_unseen_device_drain(users, merchants) -> list:
     """Several high-value transfers from a device the user has never used."""
     sender = random.choice(users)
     device = new_device_id()  # not in sender.devices
-    now = datetime.now(timezone.utc)
+    now = datetime.now(IST)
     events = []
     for i in range(random.randint(3, 6)):
         ts = now + timedelta(seconds=i * random.uniform(2, 6))
@@ -208,6 +228,8 @@ def write_event(event: dict, output_dir: Path) -> Path:
 
 
 def main():
+
+    # python generate.py --output-dir .\.local\generator_sample --rate 5.0 --fraud-rate .1 --count 100 --seed 42
     parser = argparse.ArgumentParser(description="Generate synthetic UPI transaction events.")
     parser.add_argument("--output-dir", default="data/stream", help="root directory for partitioned JSONL output")
     parser.add_argument("--rate", type=float, default=5.0, help="events per second")
