@@ -15,9 +15,10 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+
 from kafka import KafkaProducer
 from kafka.errors import KafkaTimeoutError
+
 bootstrap_servers='localhost:9092'
 topic='upi_transactions'
 
@@ -104,9 +105,10 @@ def new_device_id() -> str:
     j=random.randint(1,10)
     return f"{ni}{i:04d}_{j}"
 
-from typing import Optional
-from pydantic import BaseModel, field_validator, ConfigDict,model_validator
 import re
+
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
 
 class Transaction(BaseModel):
     model_config = ConfigDict(strict=True)  # no silent coercion
@@ -118,11 +120,11 @@ class Transaction(BaseModel):
     sender_device_id: str
     receiver_upi: str
     receiver_type: str
-    receiver_category: Optional[str] = None
+    receiver_category: str | None = None
     amount: float
     status: str
     is_fraud: bool
-    fraud_pattern: Optional[str] = None
+    fraud_pattern: str | None = None
 
     @field_validator("txn_id", "sender_upi", "sender_state", "sender_device_id",
                       "receiver_upi", "receiver_type", "status")
@@ -144,7 +146,7 @@ class Transaction(BaseModel):
     @classmethod
     def amount_validate(cls, v: float) -> float:
         if v<=0:
-            raise ValueError(f"Invalid amount: negative or zero")
+            raise ValueError("Invalid amount: negative or zero")
         return v
 
     @field_validator("timestamp")
