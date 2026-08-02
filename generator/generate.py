@@ -16,6 +16,11 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from kafka import KafkaProducer
+from kafka.errors import KafkaTimeoutError
+bootstrap_servers='localhost:9092'
+topic='upi_transactions'
+
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -274,32 +279,26 @@ def next_events(users, merchants, fraud_rate) -> list:
 
 #################kafka############
 
-def make_producer(bootstrap_servers: str) -> KafkaProducer:
+#bootstrap server, serializer and idempotence setup to return KafkaProducer for publishing
+def make_producer(bootstrap_servers : str) -> KafkaProducer:
     return KafkaProducer(
-        bootstrap_servers=bootstrap_servers,
-        key_serializer=lambda k: k.encode("utf-8"),
-        value_serializer=lambda v: v.encode("utf-8"),
-        enable_idempotence=True,
+        bootstrap_servers= bootstrap_servers,
+        key_serializer= lambda k: k.encode("utf-8"),
+        value_serializer= lambda v: v.encode("utf-8"),
+        enable_idempotence= True,
     )
 
-def publish_event(producer: KafkaProducer, event: Transaction, topic: str) -> None:
-    producer.send(topic, key=event.sender_upi, value=event.model_dump_json())
+# event pusblish to kafka topic based on key sender_upi. all event are hashed and stored in partitions based on sender_upi
+def publish_event(producer: KafkaProducer, event: Transaction, topic: str, timeout: float = 5.0) -> None:
+    future = producer.send(topic, key=event.sender_upi, value=event.model_dump_json()) 
+    future.get(timeout=timeout)
 
-
-def write_event(event: Transaction, output_dir: Path) -> Path:
-    ts = event.timestamp
-    path = output_dir / ts.strftime("%Y-%m-%d") / f"{ts.strftime('%H')}.jsonl"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(event.model_dump_json() + "\n")
-    return path
 
 
 def main():
 
-    # python generate.py --output-dir .\.local\generator_sample --rate 5.0 --fraud-rate .1 --count 100 --seed 42
+    # python generate.py --rate 5.0 --fraud-rate .1 --count 100 --seed 42
     parser = argparse.ArgumentParser(description="Generate synthetic UPI transaction events.")
-    parser.add_argument("--output-dir", default="data/stream", help="root directory for partitioned JSONL output")
     parser.add_argument("--rate", type=float, default=5.0, help="events per second")
     parser.add_argument("--fraud-rate", type=float, default=0.02, help="probability of a fraud incident per generated batch")
     parser.add_argument("--count", type=int, default=None, help="stop after N events (default: run until Ctrl+C)")
@@ -307,27 +306,39 @@ def main():
     args = parser.parse_args()
 
     random.seed(args.seed)
-    output_dir = Path(args.output_dir)
 
     users = build_users(NUM_USERS)
     merchants = build_merchants(NUM_MERCHANTS)
 
     delay = 1.0 / args.rate if args.rate > 0 else 0
     written = 0
+    timeout_failed=0
+
+    producer=make_producer(bootstrap_servers)
+
+
     try:
         while args.count is None or written < args.count:
             for event in next_events(users, merchants, args.fraud_rate):
-                path = write_event(event, output_dir)
+                try :
+                    publish_event(producer,event,topic)
+                except KafkaTimeoutError:
+                    print(f'{event} failed to publish due to timeout') 
+                    timeout_failed+=1
+                    continue
+                
                 written += 1
                 tag = f"FRAUD:{event.fraud_pattern}" if event.is_fraud else "legit"
-                print(f"[{written}] {event.txn_id} {tag} -> {path}")
+                print(f"[{written}] {event.txn_id} {tag} -> published to kakfka")
                 if delay:
                     time.sleep(delay)
                 if args.count is not None and written >= args.count:
                     break
     except KeyboardInterrupt:
         pass
-    print(f"stopped after {written} events")
+    print(f"stopped after {written} events, failed events : {timeout_failed}")
+
+    producer.close()
 
 
 if __name__ == "__main__":
