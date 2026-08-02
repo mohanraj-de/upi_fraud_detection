@@ -9,7 +9,6 @@ Usage:
 """
 
 import argparse
-import json
 import math
 import random
 import time
@@ -100,26 +99,82 @@ def new_device_id() -> str:
     j=random.randint(1,10)
     return f"{ni}{i:04d}_{j}"
 
+from typing import Optional
+from pydantic import BaseModel, field_validator, ConfigDict,model_validator
+import re
+
+class Transaction(BaseModel):
+    model_config = ConfigDict(strict=True)  # no silent coercion
+
+    txn_id: str
+    timestamp: datetime
+    sender_upi: str
+    sender_state: str
+    sender_device_id: str
+    receiver_upi: str
+    receiver_type: str
+    receiver_category: Optional[str] = None
+    amount: float
+    status: str
+    is_fraud: bool
+    fraud_pattern: Optional[str] = None
+
+    @field_validator("txn_id", "sender_upi", "sender_state", "sender_device_id",
+                      "receiver_upi", "receiver_type", "status")
+    @classmethod
+    def not_null(cls, v):
+        if v is None or v == "":
+            raise ValueError("Value cannot be empty or whitespace")
+        return v
+
+    @field_validator("sender_upi", "receiver_upi")
+    @classmethod
+    def upi_format(cls, v: str) -> str:
+        reg = re.compile(r"^[A-Za-z0-9]+@[A-Za-z]+$")
+        if not reg.fullmatch(v):
+            raise ValueError(f"Invalid UPI format: {v!r}")
+        return v
+
+    @field_validator("amount")
+    @classmethod
+    def amount_validate(cls, v: float) -> float:
+        if v<=0:
+            raise ValueError(f"Invalid amount: negative or zero")
+        return v
+
+    @field_validator("timestamp")
+    @classmethod
+    def must_be_aware(cls, v):
+        if v.tzinfo is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return v
+
+    @model_validator(mode="after")
+    def p2m_needs_category(self):
+        if self.receiver_type == "P2M" and not self.receiver_category:
+            raise ValueError("P2M transaction requires receiver_category")
+        return self
 
 
 def make_event(sender, receiver_upi, receiver_type, receiver_category,
                amount, device_id, status, is_fraud=False, fraud_pattern=None,
-               timestamp=None) -> dict:
+               timestamp=None) -> Transaction:
     ts = timestamp or datetime.now(IST)
-    return {
-        "txn_id": str(uuid.uuid4()),
-        "timestamp": ts.isoformat(timespec="seconds").replace("+00:00", "Z"),
-        "sender_upi": sender.upi,
-        "sender_state": sender.state,
-        "sender_device_id": device_id,
-        "receiver_upi": receiver_upi,
-        "receiver_type": receiver_type,
-        "receiver_category": receiver_category,
-        "amount": round(amount, 2),
-        "status": status,
-        "is_fraud": is_fraud,
-        "fraud_pattern": fraud_pattern,
-    }
+
+    return Transaction(
+        txn_id=str(uuid.uuid4()),
+        timestamp=ts,
+        sender_upi=sender.upi,
+        sender_state=sender.state,
+        sender_device_id=device_id,
+        receiver_upi=receiver_upi,
+        receiver_type=receiver_type,
+        receiver_category=receiver_category,
+        amount=round(amount, 2),
+        status=status,
+        is_fraud=is_fraud,
+        fraud_pattern=fraud_pattern,
+    )
 
 
 def pick_receiver(sender, users, merchants):
@@ -217,13 +272,26 @@ def next_events(users, merchants, fraud_rate) -> list:
         return generator(users, merchants)
     return legit_transaction(users, merchants)
 
+#################kafka############
 
-def write_event(event: dict, output_dir: Path) -> Path:
-    ts = datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00"))
+def make_producer(bootstrap_servers: str) -> KafkaProducer:
+    return KafkaProducer(
+        bootstrap_servers=bootstrap_servers,
+        key_serializer=lambda k: k.encode("utf-8"),
+        value_serializer=lambda v: v.encode("utf-8"),
+        enable_idempotence=True,
+    )
+
+def publish_event(producer: KafkaProducer, event: Transaction, topic: str) -> None:
+    producer.send(topic, key=event.sender_upi, value=event.model_dump_json())
+
+
+def write_event(event: Transaction, output_dir: Path) -> Path:
+    ts = event.timestamp
     path = output_dir / ts.strftime("%Y-%m-%d") / f"{ts.strftime('%H')}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(event) + "\n")
+        f.write(event.model_dump_json() + "\n")
     return path
 
 
@@ -251,8 +319,8 @@ def main():
             for event in next_events(users, merchants, args.fraud_rate):
                 path = write_event(event, output_dir)
                 written += 1
-                tag = f"FRAUD:{event['fraud_pattern']}" if event["is_fraud"] else "legit"
-                print(f"[{written}] {event['txn_id']} {tag} -> {path}")
+                tag = f"FRAUD:{event.fraud_pattern}" if event.is_fraud else "legit"
+                print(f"[{written}] {event.txn_id} {tag} -> {path}")
                 if delay:
                     time.sleep(delay)
                 if args.count is not None and written >= args.count:
