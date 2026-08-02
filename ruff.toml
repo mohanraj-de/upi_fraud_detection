@@ -1,0 +1,2 @@
+extend-exclude = ["notebooks/"]
+src = ["generator"]
