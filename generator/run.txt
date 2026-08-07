@@ -1,0 +1,28 @@
+
+# generate
+python generator/generate.py --rate 5 --fraud-rate 0.02
+
+
+# spark reciever
+docker exec -d jupyter bash -c "nohup spark-submit /home/jovyan/generator/spark_stream.py > /home/jovyan/lakehouse/bronze/spark_submit.out 2>&1 &"
+
+docker exec -d jupyter bash -c "nohup spark-submit \
+  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,io.delta:delta-spark_2.12:3.2.0 \
+  --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
+  --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
+  /home/jovyan/generator/spark_stream.py > /home/jovyan/lakehouse/bronze/spark_submit.out 2>&1 &"
+
+# progress tracker
+docker exec jupyter tail -f /home/jovyan/lakehouse/bronze/stream.log
+
+## kill
+docker exec jupyter pgrep -f spark_stream.py
+docker exec jupyter kill -9 <pid>
+
+
+## testcases
+0. generate worked, stream recieved, stram.logs populated.
+
+1. restarted generate >> stream job resumed
+2. crashed the stream listener job
+3. restarted the stream listener
