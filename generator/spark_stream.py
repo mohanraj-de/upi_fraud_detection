@@ -25,7 +25,7 @@ schema=StructType([StructField("txn_id",StringType(),nullable=False),
 
 from pyspark.sql.functions import from_json, col
 
-
+# startingOffsets refers to offset from which data needs to be refered
 raw_df = (
     spark.readStream.format("kafka")
     .option("kafka.bootstrap.servers", "kafka:29092")
@@ -54,7 +54,7 @@ flat_df = parsed_df.select(
 )
 
 
-## add a listener to capture progress
+## add a listener in spark job to capture progress logs
 
 from pyspark.sql.streaming import StreamingQueryListener
 import logging
@@ -82,6 +82,9 @@ class RowCountListener(StreamingQueryListener):
 spark.streams.addListener(RowCountListener())
 
 # initiate the write Stream
+# checkpoint ensures spark is not reprocessing the same data. if spark stream fails mid way, the future spark job knows where to start
+
+#query object is background process initiates by script
 
 query = (
     flat_df.writeStream
@@ -91,4 +94,6 @@ query = (
     .start("/home/jovyan/lakehouse/bronze/upi_raw")
 )
 
+
+# this waits until the query process terminates (manual kill)
 query.awaitTermination() ## this will hold spark session till the streaming is completed

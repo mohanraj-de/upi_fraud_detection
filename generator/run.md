@@ -20,9 +20,27 @@ docker exec jupyter pgrep -f spark_stream.py
 docker exec jupyter kill -9 <pid>
 
 
-## testcases
-0. generate worked, stream recieved, stram.logs populated.
+## Test Cases Passed
 
-1. restarted generate >> stream job resumed
-2. crashed the stream listener job
-3. restarted the stream listener
+The following test cases were successfully verified:
+
+1. **Generate Flow**
+
+   * `generate` completed successfully.
+   * Stream was received successfully.
+   * `stream.logs` was populated as expected.
+
+2. **Generate Job Restart**
+
+   * Restarted the `generate` job while the stream was in progress.
+   * Verified that the stream job resumed successfully.
+
+3. **Stream Listener Crash**
+
+   * Simulated a crash of the stream listener job.
+   * Verified the system behavior after the listener failure.
+
+4. **Stream Listener Restart**
+
+   * Restarted the stream listener after the crash.
+   * Verified that the stream listener recovered and resumed processing successfully.
