@@ -127,6 +127,8 @@ services:
       - "8888:8888"
     volumes:
       - ./notebooks:/home/jovyan/work
+      - ./.local/lakehouse/bronze:/home/jovyan/lakehouse/bronze
+      - ./generator:/home/jovyan/generator
 
 volumes:
   zookeeper_data:
