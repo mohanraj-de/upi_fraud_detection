@@ -1,0 +1,12 @@
+select
+    trim(txn_id) as txn_id,
+    timestamp as event_timestamp,
+    Lower(trim(sender_upi)) as sender_upi,
+    Lower(trim(sender_state)) as sender_state,
+    trim(sender_device_id) as sender_device_id,
+    Lower(trim(receiver_upi)) as receiver_upi,
+    trim(receiver_type) as receiver_type,
+    trim(receiver_category) as receiver_category,
+    amount,
+    trim(status) as status
+from {{ source('source','upi_raw') }}

@@ -1,0 +1,1 @@
+{"_invocation_id": "fd0f414d-7c58-43fd-8d03-67c2354b5e97", "linked": {"0": {"name": "source.upi_fraud.source.upi_raw", "type": "source", "succ": [2, 3]}, "1": {"name": "model.upi_fraud.ind_user_dim", "type": "model"}, "2": {"name": "model.upi_fraud.silver_transactions", "type": "model"}, "3": {"name": "analysis.upi_fraud.test", "type": "analysis"}}}

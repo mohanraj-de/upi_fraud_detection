@@ -1,0 +1,6 @@
+sources:
+  - name: source
+    database: '{{ target.catalog }}'  
+    schema: bronze  
+    tables:
+      - name: upi_raw

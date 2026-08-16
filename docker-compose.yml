@@ -1,5 +1,3 @@
-version: "3.8"
-
 x-postgres-env: &postgres-env
   POSTGRES_HOST: postgres
   POSTGRES_PORT: 5432
@@ -129,6 +127,26 @@ services:
       - ./notebooks:/home/jovyan/work
       - ./.local/lakehouse/bronze:/home/jovyan/lakehouse/bronze
       - ./generator:/home/jovyan/generator
+
+  # ---------------------------------------------------------------------
+  # Transformations
+  # ---------------------------------------------------------------------
+  dbt:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbt
+    container_name: dbt-databricks
+    profiles:
+      - tools
+    working_dir: /usr/app/dbt
+    environment:
+      DATABRICKS_HOST: ${DATABRICKS_HOST}
+      DATABRICKS_HTTP_PATH: ${DATABRICKS_HTTP_PATH}
+      DATABRICKS_TOKEN: ${DATABRICKS_TOKEN}
+    volumes:
+      - ./dbt_upi_fraud:/usr/app/dbt
+      - ./profiles:/root/.dbt
+    command: ["dbt", "--version"]
 
 volumes:
   zookeeper_data:

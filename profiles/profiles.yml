@@ -1,0 +1,21 @@
+upi_fraud:
+  target: dev
+  outputs:
+    dev:
+      catalog: upi_dev
+      schema: default
+      type: databricks
+      method: http
+      host: "{{ env_var('DATABRICKS_HOST') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      threads: 4
+    prod:
+      catalog: upi_prod
+      schema: default
+      type: databricks
+      method: http
+      host: "{{ env_var('DATABRICKS_HOST') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      threads: 4

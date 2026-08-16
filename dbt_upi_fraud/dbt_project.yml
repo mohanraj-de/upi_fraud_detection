@@ -1,0 +1,33 @@
+name: upi_fraud
+version: "1.0.0"
+config-version: 2
+
+profile: upi_fraud
+
+model-paths:
+  - models
+analysis-paths:
+  - analyses
+seed-paths:
+  - seeds
+test-paths:
+  - tests
+macro-paths:
+  - macros
+
+target-path: target
+clean-targets:
+  - target
+  - dbt_packages
+
+models:
+  upi_fraud:
+    bronze:
+      +schema: bronze
+      +materialized: view
+    silver:
+      +schema: silver
+      +materialized: table
+    gold:
+      +schema: gold
+      +materialized: table
